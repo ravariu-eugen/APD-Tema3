@@ -1,0 +1,83 @@
+
+
+1. Protocol pentru transimiterea datelor
+
+    Pentru a transmite vectori de dimensiune arbitrara intre procese, folosesc
+3 functii: 
+    void send_data(int rank, int dest, int size, int *data) 
+        - are rolul de a trimite un vector de dimensiune arbitrarea
+        - mai intai, trimite un mesaj cu dimensiunea vectorului;
+        - apoi, daca lungimea e mai mare ca 0, trimite vectorul in sine.
+    (In plus, functia scrie in terminal M(<rank>,<dest>) pentru fiecare mesaj trimis - de 2 ori)
+    
+    int recv_data_in_buffer(int rank, int src, int *size, int *buffer)
+    int recv_data_dynamic(int rank, int src, int *size, int **data)
+        - cele 2 functii au rolul de a primi un vector de dimensiune arbitrara
+
+        - mai intai, primeste un mesaj cu dimensiunea vectorului de la procesul cu id-ul src;
+            - daca src == MPI_ANY_SOURCE, atunci asteapta un mesaj de la orice proces; 
+        - apoi, daca lungimea e mai mare ca 0, primeste vectorul de la src;
+            - daca src == MPI_ANY_SOURCE, atunci primeste vectorul de la procesul care a trimis lungimea.
+        - modul in care cele 2 functii stocheaza vectorul primit difera:
+            - recv_data_in_buffer: intr-un buffer primit ca parametru
+            - recv_data_dynamic: aloca dinamic un spatiu in care scrie, 
+                a carui adresa e transmisa prin argumentul data
+
+2. Memorarea topologiei
+    Fiecare proces memoreaza topologia folosind mai multe variabile globale
+    Pentru fiecare valoarea cu indexul <i> este asociata procesului coordonator cu id-ul <i>
+        - num_neigh_worker - numarul de procese muncitor din clusterul asociat 
+        - *neigh_worker - vector cu id-urile proceselor muncitor din clusterul asociat
+        - neigh_coord_left - procesul coordonator aflat la dreapta in inel
+        - neigh_coord_right - procesul coordonator aflat la stanga in inel
+        - parent - procesul parinte in arborele de acoperire obtinut la distribuirea topologiei
+
+2. Rularea programului
+    Rularea are 3 etape:
+    1) Initializarea topologiei
+        Procesele coordonator isi initializeaza in topologia lor legaturile cu vecinii coordonatori
+    si lista de muncitori din clusterul asociat
+    2) Distribuirea topologiei
+        Pentru a distribui topologia folosim un algoritm similar cu cel folosit in labotatorul 10
+    pentru construirea arborelui de acoperire. In cazul topologiei noastre, arborele de acoperire 
+    va fi format numai din procesele coordonator, iar, pe langa vectorul de parinti, propagam si 
+    topologia cunoscuta la un moment dat
+    3) Efectuarea calculului distribuit
+        Aceasta etapa are 4 faze:
+        1. Difuzare intre coordonatori
+            Intrucat coordonatorii sunt aranjati sub forma de inel, arborele de acoperire va avea 
+        forma unui arbore ce are ca radacina procesul root si care are drept copii cate o linie de 
+        0 sau mai multe procese.
+            Procesul ROOT (0) genereaza vectorul si il imparte in 3: pentru proprii muncitori, 
+        pentru subarborele stang si pentru cel drept, proportional cu numarul de muncitori din fiecare.
+        Apoi, acesta trimite fiecarui subarbore partea corespunzatoare si numarul de muncitori ce se
+        afla in acel subarbore
+            Celelalte procese coordonatoare vor primi vectorul de valori si numarul de muncitori din 
+        subarbore, partitioneaza vectorul proportional pentru muncitorii sai si pentru muncitorii ce 
+        urmeaza, dupa care pastreaza ce e pentru muncitorii sai si trimite restul la procesul urmator.
+        Daca procesul se afla la capat de linie(numarul de muncitori din subarbore este egal cu numarul
+        propriu de muncitori, atunci nu mai trimite in continuare).
+
+        2. Transmitere si preluare de la muncitori
+            Fiecare proces isi partioneaza valorile pastrate si trimite fiecarui proces din cluster 
+        un vector de valori. Fiecare muncitor va primi vectorul, va aplica o operatie asupra fiecarei 
+        valori(inmultire cu 5) si va trimite inapoi la coordonatorul sau vectorul modificat.
+        Coordonatorul va memora valorile in ordinea in care le-a trimis.
+
+        3. Colectare date
+            Fiecare proces non-ROOT va primi un vector de la vecinul non-parinte(daca nu e capat) si 
+        va trimite procesului parinte vectorul primit impreuna cu valorile primite de la muncitori.
+        La final, procesul root va primi valorile de la muncitorii sai si de la cei de vecini, si le 
+        va afisa la terminal.
+
+
+Detalii implementare bonus
+    Pentru a verifica ca nodul 1 este izolat, acesta se uita la faptul ca nu are vecini.
+    Apoi, daca un nod nu are parinte in arborele de acoperire, inseamna ca nu are acces la ROOT, 
+deci nu poate participa la calculul ditribuit.
+    Restul algoritmului functioneaza pentru inele de dimensiune arbitrara, in care nu exista 
+o componenta conexa de procese coordonator de dimensiune mai mare ca 1, care sa nu contina ROOT.
+    
+
+
+
